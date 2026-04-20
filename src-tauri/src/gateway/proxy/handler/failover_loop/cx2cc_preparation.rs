@@ -6,10 +6,8 @@
 
 use super::provider_iterator::SkipReason;
 use super::*;
-use crate::app::app_state::GatewayState;
+use crate::app::gateway_runtime_access::app_gateway_status;
 use crate::gateway::proxy::protocol_bridge::{self, BridgeContext};
-use crate::shared::mutex_ext::MutexExt;
-use tauri::Manager;
 
 /// All CX2CC-related state produced by preparation.
 pub(super) struct Cx2ccResult {
@@ -157,10 +155,7 @@ pub(super) async fn prepare(args: Cx2ccPreparationInput<'_>) -> Cx2ccOutcome {
             args.codex_chatgpt_account_id.clone(),
         )
     } else {
-        let state = args.input.state.app.state::<GatewayState>();
-        let manager = state.0.lock_or_recover();
-        let gateway_base_url = manager.status().base_url;
-        drop(manager);
+        let gateway_base_url = app_gateway_status(&args.input.state.app).base_url;
 
         let Some(gateway_base_url) = gateway_base_url else {
             return Cx2ccOutcome::Skipped(SkipReason {

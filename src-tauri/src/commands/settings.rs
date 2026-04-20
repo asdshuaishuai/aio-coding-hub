@@ -1,10 +1,11 @@
 //! Usage: Settings-related Tauri commands.
 
-use crate::app_state::{
-    ensure_db_ready, try_with_app_gateway_manager, with_app_gateway_manager,
-    with_app_gateway_manager_mut, DbInitState,
-};
+use crate::app_state::{ensure_db_ready, DbInitState};
 use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
+use crate::gateway_control::{
+    app_start_gateway_with_config, try_app_gateway_update_circuit_config,
+};
+use crate::gateway_runtime_access::app_gateway_status;
 use crate::{blocking, cli_proxy, resident, settings};
 use tauri::Manager;
 
@@ -333,19 +334,18 @@ fn sync_runtime_side_effects(
         resident.set_tray_enabled(next_settings.tray_enabled);
     }
 
-    let _ = try_with_app_gateway_manager(app, |manager| {
-        manager.update_circuit_config(
-            next_settings.circuit_breaker_failure_threshold.max(1),
-            (next_settings.circuit_breaker_open_duration_minutes as i64).saturating_mul(60),
-        );
-    });
+    let _ = try_app_gateway_update_circuit_config(
+        app,
+        next_settings.circuit_breaker_failure_threshold.max(1),
+        (next_settings.circuit_breaker_open_duration_minutes as i64).saturating_mul(60),
+    );
 
     crate::gateway::http_client::sync_from_settings(next_settings)?;
     Ok(())
 }
 
 fn current_gateway_status(app: &tauri::AppHandle) -> crate::gateway::GatewayStatus {
-    with_app_gateway_manager(app, |manager| manager.status())
+    app_gateway_status(app)
 }
 
 async fn start_gateway_with_settings(
@@ -359,14 +359,12 @@ async fn start_gateway_with_settings(
         let app = app.clone();
         let db = db.clone();
         move || {
-            with_app_gateway_manager_mut(&app, |manager| {
-                manager.start_with_config(
-                    &app,
-                    db,
-                    &next_settings,
-                    Some(next_settings.preferred_port),
-                )
-            })
+            app_start_gateway_with_config(
+                &app,
+                db,
+                &next_settings,
+                Some(next_settings.preferred_port),
+            )
         }
     })
     .await?;

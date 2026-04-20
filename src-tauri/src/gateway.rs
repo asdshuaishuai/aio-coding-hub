@@ -23,6 +23,7 @@ mod warmup;
 
 pub use manager::GatewayManager;
 pub(crate) use manager::GatewayStartResult;
+pub(crate) use runtime::GatewayRuntimeHandles;
 
 use crate::settings;
 use serde::Serialize;

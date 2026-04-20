@@ -1,6 +1,6 @@
 //! Usage: Data reset / disk usage related Tauri commands.
 
-use crate::app_state::{ensure_db_ready, prepare_db_reset, DbInitState, GatewayState};
+use crate::app_state::{ensure_db_ready, prepare_db_reset, DbInitState};
 use crate::{app_paths, blocking, data_management};
 
 #[tauri::command]
@@ -48,10 +48,9 @@ pub(crate) async fn request_logs_clear_all(
 pub(crate) async fn app_data_reset(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
-    state: tauri::State<'_, GatewayState>,
 ) -> Result<bool, String> {
     // Best-effort: stop gateway first to avoid concurrent writes locking sqlite files.
-    let _ = super::gateway_stop(app.clone(), state).await;
+    let _ = super::gateway_stop(app.clone()).await;
     let _db_reset_guard = prepare_db_reset(db_state.inner()).await;
     blocking::run("app_data_reset", move || {
         data_management::app_data_reset(&app)

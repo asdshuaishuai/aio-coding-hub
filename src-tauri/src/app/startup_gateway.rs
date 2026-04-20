@@ -1,7 +1,7 @@
 //! Usage: Gateway startup and follow-up sync for bootstrap.
 
-use super::app_state::with_app_gateway_manager_mut;
-use crate::{blocking, cli_proxy};
+use super::{gateway_control::app_start_gateway, gateway_service};
+use crate::blocking;
 
 pub(crate) async fn start(
     app_handle: &tauri::AppHandle,
@@ -14,11 +14,7 @@ pub(crate) async fn start(
     let status = match blocking::run("startup_gateway_autostart", {
         let app_handle = app_handle.clone();
         let db = db.clone();
-        move || {
-            with_app_gateway_manager_mut(&app_handle, |manager| {
-                manager.start(&app_handle, db, Some(preferred_port))
-            })
-        }
+        move || app_start_gateway(&app_handle, db, Some(preferred_port))
     })
     .await
     {
@@ -51,12 +47,10 @@ pub(crate) async fn sync_cli_proxy_after_autostart(
     app_handle: &tauri::AppHandle,
     status: &crate::gateway::GatewayStatus,
 ) {
-    if let Some(base_origin) = status.base_url.as_deref() {
-        let app_for_sync = app_handle.clone();
-        let base_origin = base_origin.to_string();
-        let _ = blocking::run("cli_proxy_sync_enabled_after_autostart", move || {
-            cli_proxy::sync_enabled(&app_for_sync, &base_origin, true)
-        })
-        .await;
-    }
+    gateway_service::sync_cli_proxy_to_gateway(
+        app_handle,
+        status,
+        "cli_proxy_sync_enabled_after_autostart",
+    )
+    .await;
 }

@@ -1,6 +1,7 @@
 //! Usage: Provider sort modes related Tauri commands.
 
-use crate::app_state::{ensure_db_ready, with_gateway_manager, DbInitState, GatewayState};
+use crate::app_state::{ensure_db_ready, DbInitState};
+use crate::gateway_control::app_gateway_clear_cli_session_bindings;
 use crate::{blocking, sort_modes};
 
 #[tauri::command]
@@ -9,7 +10,7 @@ pub(crate) async fn sort_modes_list(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
 ) -> Result<Vec<sort_modes::SortModeSummary>, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run("sort_modes_list", move || sort_modes::list_modes(&db))
         .await
         .map_err(Into::into)
@@ -22,7 +23,7 @@ pub(crate) async fn sort_mode_create(
     db_state: tauri::State<'_, DbInitState>,
     name: String,
 ) -> Result<sort_modes::SortModeSummary, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run("sort_mode_create", move || {
         sort_modes::create_mode(&db, &name)
     })
@@ -38,7 +39,7 @@ pub(crate) async fn sort_mode_rename(
     mode_id: i64,
     name: String,
 ) -> Result<sort_modes::SortModeSummary, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run("sort_mode_rename", move || {
         sort_modes::rename_mode(&db, mode_id, &name)
     })
@@ -53,7 +54,7 @@ pub(crate) async fn sort_mode_delete(
     db_state: tauri::State<'_, DbInitState>,
     mode_id: i64,
 ) -> Result<bool, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run(
         "sort_mode_delete",
         move || -> crate::shared::error::AppResult<bool> {
@@ -71,7 +72,7 @@ pub(crate) async fn sort_mode_active_list(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
 ) -> Result<Vec<sort_modes::SortModeActiveRow>, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run("sort_mode_active_list", move || {
         sort_modes::list_active(&db)
     })
@@ -84,20 +85,17 @@ pub(crate) async fn sort_mode_active_list(
 pub(crate) async fn sort_mode_active_set(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
-    gateway_state: tauri::State<'_, GatewayState>,
     cli_key: String,
     mode_id: Option<i64>,
 ) -> Result<sort_modes::SortModeActiveRow, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let cli_key_for_db = cli_key.clone();
     let row = blocking::run("sort_mode_active_set", move || {
         sort_modes::set_active(&db, &cli_key_for_db, mode_id)
     })
     .await?;
 
-    with_gateway_manager(gateway_state.inner(), |manager| {
-        manager.clear_cli_session_bindings(&cli_key);
-    });
+    app_gateway_clear_cli_session_bindings(&app, &cli_key);
 
     Ok(row)
 }

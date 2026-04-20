@@ -6,7 +6,7 @@ mod infra;
 mod shared;
 pub mod test_support;
 
-pub(crate) use app::{app_state, notice, resident};
+pub(crate) use app::{app_state, gateway_control, gateway_runtime_access, notice, resident};
 pub(crate) use domain::{
     claude_model_validation, claude_model_validation_history, claude_plugins, cli_sessions, cost,
     cost_stats, mcp, prompts, provider_limit_usage, providers, skills, sort_modes, usage,

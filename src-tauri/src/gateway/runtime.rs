@@ -33,7 +33,7 @@ impl GatewayAppState {
     }
 }
 
-pub(super) type GatewayRuntimeHandles = (
+pub(crate) type GatewayRuntimeHandles = (
     oneshot::Sender<()>,
     tauri::async_runtime::JoinHandle<()>,
     tauri::async_runtime::JoinHandle<()>,

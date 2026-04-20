@@ -1,6 +1,6 @@
 //! Usage: Best-effort cleanup hooks for app lifecycle events (exit/restart).
 
-use super::app_state::with_app_gateway_manager_mut;
+use super::gateway_control::app_take_running_gateway;
 use crate::blocking;
 use crate::cli_proxy;
 use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
@@ -147,7 +147,7 @@ pub(crate) async fn restore_cli_proxy_keep_state_best_effort(
 }
 
 pub(crate) async fn stop_gateway_best_effort<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let running = with_app_gateway_manager_mut(app, |manager| manager.take_running());
+    let running = app_take_running_gateway(app);
 
     let Some((
         shutdown,

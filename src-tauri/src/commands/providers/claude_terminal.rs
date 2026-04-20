@@ -1,5 +1,6 @@
-use crate::app_state::{ensure_db_ready, with_app_gateway_manager_mut, DbInitState};
+use crate::app_state::{ensure_db_ready, DbInitState};
 use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
+use crate::gateway_control::app_ensure_gateway_running;
 use crate::{base_url_probe, blocking, providers};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -47,13 +48,7 @@ fn ensure_gateway_base_origin(
     app: &tauri::AppHandle,
     db: &crate::db::Db,
 ) -> crate::shared::error::AppResult<String> {
-    let status = with_app_gateway_manager_mut(app, |manager| {
-        let mut status = manager.status();
-        if !status.running {
-            status = manager.start(app, db.clone(), None)?;
-        }
-        Ok::<_, crate::shared::error::AppError>(status)
-    })?;
+    let status = app_ensure_gateway_running(app, db.clone(), None)?;
 
     crate::app::heartbeat_watchdog::gated_emit(app, GATEWAY_STATUS_EVENT_NAME, status.clone());
 

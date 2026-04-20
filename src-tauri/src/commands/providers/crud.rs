@@ -1,4 +1,5 @@
-use crate::app_state::{ensure_db_ready, with_gateway_manager, DbInitState, GatewayState};
+use crate::app_state::{ensure_db_ready, DbInitState};
+use crate::gateway_control::app_gateway_clear_cli_session_bindings;
 use crate::{blocking, providers};
 
 #[derive(serde::Deserialize, specta::Type)]
@@ -110,7 +111,7 @@ pub(crate) async fn providers_list(
     db_state: tauri::State<'_, DbInitState>,
     cli_key: String,
 ) -> Result<Vec<providers::ProviderSummary>, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     blocking::run("providers_list", move || {
         providers::list_by_cli(&db, &cli_key)
     })
@@ -123,7 +124,6 @@ pub(crate) async fn providers_list(
 pub(crate) async fn provider_upsert(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
-    gateway_state: tauri::State<'_, GatewayState>,
     input: ProviderUpsertInput,
 ) -> Result<providers::ProviderSummary, String> {
     let ProviderUpsertInput {
@@ -156,7 +156,7 @@ pub(crate) async fn provider_upsert(
     let name_for_log = name.clone();
     let cli_key_for_log = cli_key.clone();
     let submitted_api_key = api_key.clone();
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run("provider_upsert", move || {
         let previous = match provider_id {
             Some(id) => {
@@ -229,9 +229,7 @@ pub(crate) async fn provider_upsert(
         }
 
         if decision.clear_session_bindings {
-            let cleared_sessions = with_gateway_manager(gateway_state.inner(), |manager| {
-                manager.clear_cli_session_bindings(&provider.cli_key)
-            });
+            let cleared_sessions = app_gateway_clear_cli_session_bindings(&app, &provider.cli_key);
             tracing::info!(
                 provider_id = provider.id,
                 cli_key = %provider.cli_key,
@@ -251,7 +249,7 @@ pub(crate) async fn provider_duplicate(
     db_state: tauri::State<'_, DbInitState>,
     provider_id: i64,
 ) -> Result<providers::ProviderSummary, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run("provider_duplicate", move || {
         let conn = db.open_connection()?;
         let source = providers::get_by_id(&conn, provider_id)?;
@@ -317,7 +315,7 @@ pub(crate) async fn provider_set_enabled(
     provider_id: i64,
     enabled: bool,
 ) -> Result<providers::ProviderSummary, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run("provider_set_enabled", move || {
         providers::set_enabled(&db, provider_id, enabled)
     })
@@ -342,7 +340,7 @@ pub(crate) async fn provider_delete(
     db_state: tauri::State<'_, DbInitState>,
     provider_id: i64,
 ) -> Result<bool, String> {
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run(
         "provider_delete",
         move || -> crate::shared::error::AppResult<bool> {
@@ -365,12 +363,11 @@ pub(crate) async fn provider_delete(
 pub(crate) async fn providers_reorder(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
-    gateway_state: tauri::State<'_, GatewayState>,
     cli_key: String,
     ordered_provider_ids: Vec<i64>,
 ) -> Result<Vec<providers::ProviderSummary>, String> {
     let cli_key_for_log = cli_key.clone();
-    let db = ensure_db_ready(app, db_state.inner()).await?;
+    let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run("providers_reorder", move || {
         providers::reorder(&db, &cli_key, ordered_provider_ids)
     })
@@ -379,9 +376,7 @@ pub(crate) async fn providers_reorder(
 
     if let Ok(ref providers) = result {
         // Provider order changes must invalidate session-bound provider_order (default TTL=300s).
-        let cleared = with_gateway_manager(gateway_state.inner(), |manager| {
-            manager.clear_cli_session_bindings(&cli_key_for_log)
-        });
+        let cleared = app_gateway_clear_cli_session_bindings(&app, &cli_key_for_log);
         tracing::info!(
             cli_key = %cli_key_for_log,
             count = providers.len(),

@@ -1,7 +1,6 @@
 //! Usage: Synchronous Tauri setup wiring extracted from `lib.rs`.
 
 use super::resident;
-use crate::app_paths;
 use tauri_plugin_dialog::DialogExt;
 
 pub(crate) fn setup(app: &mut tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error::Error>> {
@@ -57,24 +56,25 @@ fn init_desktop_integrations(app: &mut tauri::App<tauri::Wry>) {
     }
 }
 
-fn log_dev_diagnostics(app: &mut tauri::App<tauri::Wry>) {
-    #[cfg(debug_assertions)]
-    {
-        let enabled = std::env::var("AIO_CODING_HUB_DEV_DIAGNOSTICS")
-            .ok()
-            .map(|v| v.trim().to_ascii_lowercase())
-            .is_some_and(|v| v == "1" || v == "true" || v == "yes");
-        if enabled {
-            let identifier = &app.config().identifier;
-            let product_name = app.config().product_name.as_deref().unwrap_or("<missing>");
-            tracing::info!(identifier = %identifier, "[dev] tauri identifier");
-            tracing::info!(product_name = %product_name, "[dev] productName");
-            if let Ok(dotdir_name) = std::env::var("AIO_CODING_HUB_DOTDIR_NAME") {
-                tracing::info!(dotdir_name = %dotdir_name, "[dev] AIO_CODING_HUB_DOTDIR_NAME");
-            }
-            if let Ok(dir) = app_paths::app_data_dir(app.handle()) {
-                tracing::info!(dir = %dir.display(), "[dev] app data dir");
-            }
+#[cfg(debug_assertions)]
+fn log_dev_diagnostics(app: &tauri::App<tauri::Wry>) {
+    let enabled = std::env::var("AIO_CODING_HUB_DEV_DIAGNOSTICS")
+        .ok()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .is_some_and(|v| v == "1" || v == "true" || v == "yes");
+    if enabled {
+        let identifier = &app.config().identifier;
+        let product_name = app.config().product_name.as_deref().unwrap_or("<missing>");
+        tracing::info!(identifier = %identifier, "[dev] tauri identifier");
+        tracing::info!(product_name = %product_name, "[dev] productName");
+        if let Ok(dotdir_name) = std::env::var("AIO_CODING_HUB_DOTDIR_NAME") {
+            tracing::info!(dotdir_name = %dotdir_name, "[dev] AIO_CODING_HUB_DOTDIR_NAME");
+        }
+        if let Ok(dir) = crate::app_paths::app_data_dir(app.handle()) {
+            tracing::info!(dir = %dir.display(), "[dev] app data dir");
         }
     }
 }
+
+#[cfg(not(debug_assertions))]
+fn log_dev_diagnostics(_app: &tauri::App<tauri::Wry>) {}

@@ -1,9 +1,9 @@
 //! Usage: CLI proxy configuration related Tauri commands.
 
-use crate::app_state::{
-    ensure_db_ready, with_app_gateway_manager, with_app_gateway_manager_mut, DbInitState,
-};
+use crate::app_state::{ensure_db_ready, DbInitState};
 use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
+use crate::gateway_control::app_ensure_gateway_running;
+use crate::gateway_runtime_access::app_gateway_status;
 use crate::{blocking, cli_proxy, mcp, settings};
 
 #[tauri::command]
@@ -11,19 +11,17 @@ use crate::{blocking, cli_proxy, mcp, settings};
 pub(crate) async fn cli_proxy_status_all(
     app: tauri::AppHandle,
 ) -> Result<Vec<cli_proxy::CliProxyStatus>, String> {
-    let current_base_origin = with_app_gateway_manager(&app, |manager| {
-        let status = manager.status();
-        if status.running {
-            Some(status.base_url.unwrap_or_else(|| {
-                format!(
-                    "http://127.0.0.1:{}",
-                    status.port.unwrap_or(settings::DEFAULT_GATEWAY_PORT)
-                )
-            }))
-        } else {
-            None
-        }
-    });
+    let status = app_gateway_status(&app);
+    let current_base_origin = if status.running {
+        Some(status.base_url.unwrap_or_else(|| {
+            format!(
+                "http://127.0.0.1:{}",
+                status.port.unwrap_or(settings::DEFAULT_GATEWAY_PORT)
+            )
+        }))
+    } else {
+        None
+    };
 
     blocking::run("cli_proxy_status_all", move || {
         cli_proxy::status_all(&app, current_base_origin.as_deref())
@@ -62,20 +60,16 @@ pub(crate) async fn cli_proxy_set_enabled_impl(
             let app = app.clone();
             let db = db.clone();
             move || -> crate::shared::error::AppResult<String> {
-                let status = with_app_gateway_manager_mut(&app, |manager| {
-                    if manager.status().running {
-                        Ok::<_, crate::shared::error::AppError>(manager.status())
-                    } else {
-                        let settings = settings::read(&app)?;
-                        let status = manager.start(&app, db, Some(settings.preferred_port))?;
-                        crate::app::heartbeat_watchdog::gated_emit(
-                            &app,
-                            GATEWAY_STATUS_EVENT_NAME,
-                            status.clone(),
-                        );
-                        Ok(status)
-                    }
-                })?;
+                let settings = settings::read(&app)?;
+                let was_running = app_gateway_status(&app).running;
+                let status = app_ensure_gateway_running(&app, db, Some(settings.preferred_port))?;
+                if !was_running {
+                    crate::app::heartbeat_watchdog::gated_emit(
+                        &app,
+                        GATEWAY_STATUS_EVENT_NAME,
+                        status.clone(),
+                    );
+                }
 
                 Ok(status.base_url.unwrap_or_else(|| {
                     format!(
@@ -220,26 +214,24 @@ pub(crate) async fn cli_proxy_sync_enabled(
 pub(crate) async fn cli_proxy_rebind_codex_home(
     app: tauri::AppHandle,
 ) -> Result<cli_proxy::CliProxyResult, String> {
-    let (gateway_running, base_origin) = with_app_gateway_manager(&app, |manager| {
-        let status = manager.status();
-        if status.running {
-            Ok::<_, crate::shared::error::AppError>((
-                true,
-                status.base_url.unwrap_or_else(|| {
-                    format!(
-                        "http://127.0.0.1:{}",
-                        status.port.unwrap_or(settings::DEFAULT_GATEWAY_PORT)
-                    )
-                }),
-            ))
-        } else {
-            let settings = settings::read(&app)?;
-            Ok((
-                false,
-                format!("http://127.0.0.1:{}", settings.preferred_port),
-            ))
-        }
-    })?;
+    let status = app_gateway_status(&app);
+    let (gateway_running, base_origin) = if status.running {
+        (
+            true,
+            status.base_url.unwrap_or_else(|| {
+                format!(
+                    "http://127.0.0.1:{}",
+                    status.port.unwrap_or(settings::DEFAULT_GATEWAY_PORT)
+                )
+            }),
+        )
+    } else {
+        let settings = settings::read(&app)?;
+        (
+            false,
+            format!("http://127.0.0.1:{}", settings.preferred_port),
+        )
+    };
 
     blocking::run("cli_proxy_rebind_codex_home", move || {
         cli_proxy::rebind_codex_home_after_change(&app, &base_origin, gateway_running)

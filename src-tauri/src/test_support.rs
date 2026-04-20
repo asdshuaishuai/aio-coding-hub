@@ -395,7 +395,7 @@ pub fn gateway_check_port_available_json<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     port: u16,
 ) -> crate::shared::error::AppResult<bool> {
-    tauri::async_runtime::block_on(crate::commands::gateway::gateway_check_port_available_impl(
+    tauri::async_runtime::block_on(crate::app::gateway_service::check_port_available(
         app.clone(),
         port,
     ))
@@ -530,15 +530,14 @@ pub fn settings_set_via_command_json<R: tauri::Runtime>(
     let persisted = crate::settings::write(app, &next)?;
     crate::gateway::http_client::sync_from_settings(&persisted)?;
 
-    let gateway_status =
-        crate::app_state::try_with_app_gateway_manager(app, |manager| manager.status()).unwrap_or(
-            crate::gateway::GatewayStatus {
-                running: false,
-                port: None,
-                base_url: None,
-                listen_addr: None,
-            },
-        );
+    let gateway_status = crate::gateway_runtime_access::try_app_gateway_status(app).unwrap_or(
+        crate::gateway::GatewayStatus {
+            running: false,
+            port: None,
+            base_url: None,
+            listen_addr: None,
+        },
+    );
 
     serialize_json(SettingsMutationResult {
         settings: SettingsView::from(&persisted),

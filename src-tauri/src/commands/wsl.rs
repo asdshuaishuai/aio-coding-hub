@@ -1,8 +1,9 @@
 //! Usage: Windows WSL related Tauri commands.
 
-use crate::app_state::{ensure_db_ready, with_app_gateway_manager_mut, DbInitState};
+use crate::app_state::{ensure_db_ready, DbInitState};
 #[cfg(windows)]
 use crate::db;
+use crate::gateway_control::app_ensure_gateway_running;
 use crate::{blocking, gateway, settings, wsl};
 #[cfg(windows)]
 use tauri::Manager;
@@ -137,11 +138,7 @@ pub(crate) async fn wsl_configure_clients(
     let status = blocking::run("wsl_configure_clients_ensure_gateway", {
         let app = app.clone();
         let db = db.clone();
-        move || {
-            with_app_gateway_manager_mut(&app, |manager| {
-                manager.start(&app, db, Some(preferred_port))
-            })
-        }
+        move || app_ensure_gateway_running(&app, db, Some(preferred_port))
     })
     .await?;
 
@@ -209,7 +206,8 @@ pub(crate) async fn wsl_configure_clients(
 /// detects WSL, resolves host, gathers sync data, and configures CLI clients.
 #[cfg(windows)]
 pub(crate) async fn wsl_auto_sync_core(app: &tauri::AppHandle) -> Result<(), String> {
-    use crate::app_state::{ensure_db_ready, with_app_gateway_manager, DbInitState};
+    use crate::app_state::{ensure_db_ready, DbInitState};
+    use crate::gateway_runtime_access::app_gateway_status;
 
     // 1. Read settings and check preconditions
     let cfg = blocking::run("wsl_core_read_settings", {
@@ -230,7 +228,7 @@ pub(crate) async fn wsl_auto_sync_core(app: &tauri::AppHandle) -> Result<(), Str
     }
 
     // 2. Get gateway port
-    let status = with_app_gateway_manager(app, |manager| manager.status());
+    let status = app_gateway_status(app);
     let port = match status.port {
         Some(port) => port,
         None => {
